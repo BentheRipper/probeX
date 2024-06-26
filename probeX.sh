@@ -1,10 +1,20 @@
 #!/bin/bash
 
-# Default values for options
-OUTPUT_FILE=""
-FILTER_STATUS_CODES=()
-FILTER_PORTS=(80 443)
-declare -A SEEN_SUBDOMAINS
+# Check if a filename is provided
+if [ -z "$1" ]; then
+  echo "Usage: $0 filename"
+  exit 1
+fi
+
+# Check if the file exists
+if [ ! -f "$1" ]; then
+  echo "File not found!"
+  exit 1
+fi
+
+# Process the file to extract subdomains, sort, and remove duplicates
+awk -F'[,[]' '{print $1}' "$1" | sort | uniq > "${1}_unique"
+echo "Duplicates removed. Output written to ${1}_unique"
 
 # Function to display usage
 usage() {
@@ -14,6 +24,12 @@ usage() {
     echo -e "  -p ports             Filter by ports (comma-separated, e.g., 80,443)"
     exit 1
 }
+
+# Default values for options
+OUTPUT_FILE=""
+FILTER_STATUS_CODES=()
+FILTER_PORTS=(80 443)
+declare -A SEEN_SUBDOMAINS
 
 # Parse command-line arguments
 while getopts ":o:s:p:" opt; do
@@ -39,7 +55,7 @@ if [[ -z "$1" ]]; then
     usage
 fi
 
-SUBDOMAINS_FILE="$1"
+SUBDOMAINS_FILE="${1}_unique"  # Use the processed file with unique subdomains
 
 # Check if the subdomains file exists
 if [[ ! -f "$SUBDOMAINS_FILE" ]]; then
@@ -90,13 +106,10 @@ probe_subdomain() {
 # Read the subdomains file and probe each subdomain
 while IFS= read -r line; do
     if [[ -n "$line" ]]; then
-        # Extract subdomain and sources
-        subdomain=$(echo "$line" | awk -F',' '{print $1}')
-        sources=$(echo "$line" | awk -F',' '{print substr($0, index($0,$2))}')
-        sources=${sources:1:-1}  # Remove the surrounding brackets
-        sources=$(echo "$sources" | tr ',' ' ')  # Replace commas with spaces
+        subdomain="$line"
+        sources=""  # No sources are provided in this script, assuming it's just subdomains
 
-        # Check for duplicates
+        # Check for duplicates (though we expect none after processing with awk | sort | uniq)
         if [[ -n "${SEEN_SUBDOMAINS[$subdomain]}" ]]; then
             echo -e "\033[33mWarning: Duplicate subdomain found: ${subdomain} (Sources: ${sources})\033[0m"
             continue
